@@ -1,6 +1,6 @@
 
 # Run
-- flask --app <file_name> run --port=<port>
+- flask --app <file_name> run --port= <port>
 
 
 ## CRUD
