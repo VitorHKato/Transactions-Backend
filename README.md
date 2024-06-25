@@ -1,6 +1,6 @@
 
 # Run
-- app.py (Monolithic)
+- python app.py (Monolithic)
 
 
 ## CRUD
