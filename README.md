@@ -1,6 +1,6 @@
 
 # Run
-- flask --app <file_name> run --port= <port>
+- app.py (Monolithic)
 
 
 ## CRUD
