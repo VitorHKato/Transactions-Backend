@@ -5,7 +5,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-from order_service import PRODUCT_SERVICE_URL
+from orchestrator import PRODUCT_SERVICE_URL
 
 app = Flask(__name__)
 
@@ -106,9 +106,44 @@ def get_inventory(product_id):
         inventory = session.query(Inventory).filter_by(product_id=product_id).first()
 
         if inventory:
-            return jsonify({"stock": inventory.stock}), 200
+            return jsonify({"stock": inventory.stock, "id": inventory.id}), 200
     except SQLAlchemyError as e:
         return jsonify({"error": "Inventory not found."}), 404
+    finally:
+        session.close()
+
+
+@app.route('/inventory/<int:id>', methods=['PUT'])
+def update_product(id):
+    session = Session()
+    try:
+        data = request.json
+        inventory = session.query(Inventory).filter_by(id=id).first()
+        if inventory:
+            inventory.stock = data['stock'] if 'stock' in data else inventory.stock
+
+            session.commit()
+            return jsonify({"message": "Inventory updated successfully!"}), 200
+        else:
+            return jsonify({"error": "Inventory not found."}), 404
+    except SQLAlchemyError as e:
+        session.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        session.close()
+
+
+@app.route('/inventory_commit/<int:checkpoint_id>', methods=['POST'])
+def inventory_commit(checkpoint_id):
+    session = Session()
+    try:
+        inventory = session.query(Inventory).get(checkpoint_id)
+        inventory.status = 'committed'
+        session.commit()
+        return jsonify({"message": "Inventory committed"}), 200
+    except Exception as e:
+        session.rollback()
+        return jsonify({"error": str(e)}), 500
     finally:
         session.close()
 

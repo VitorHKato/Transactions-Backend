@@ -1,16 +1,11 @@
 from flask import Flask, request, jsonify
-import requests
-from sqlalchemy import Column, Integer, create_engine
+from sqlalchemy import Column, Integer, create_engine, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
 
 app = Flask(__name__)
-
-
-INVENTORY_SERVICE_URL = 'http://127.0.0.1:5001'
-PAYMENT_SERVICE_URL = 'http://127.0.0.1:5002'
-PRODUCT_SERVICE_URL = 'http://127.0.0.1:5003'
 
 
 DATABASE_URI = 'sqlite:///order.db'
@@ -30,54 +25,64 @@ class Orders(Base):
 Base.metadata.create_all(engine)
 
 
-def add_order(product_id, quantity, user_id, order_session):
-    new_order = Orders(
-        user_id=user_id,
-        product_id=product_id,
-        itens_qtt=quantity
-    )
-    order_session.add(new_order)
-    order_session.flush()
-
-
-@app.route('/order', methods=['POST'])
+@app.route('/create_order', methods=['POST'])
 def create_order():
     data = request.json
     product_id = data['product_id']
     quantity = data['quantity']
     user_id = data['user_id']
 
-    order_session = Session()
+    session = Session()
     try:
-        # Add order
-        add_order(product_id, quantity, user_id, order_session)
+        new_order = Orders(
+            user_id=user_id,
+            product_id=product_id,
+            itens_qtt=quantity
+        )
+        session.add(new_order)
+        session.flush()
 
-        # Check inventory
-        inventory_response = requests.post(f'{INVENTORY_SERVICE_URL}/reserve', json={'product_id': product_id,
-                                                                                     'quantity': quantity})
+        # Created restore point
+        checkpoint_id = session.execute(text("SELECT last_insert_rowid()")).scalar()
 
-        # Process payment
-        payment_response = requests.post(f'{PAYMENT_SERVICE_URL}/pay',
-                                         json={'user_id': user_id,
-                                               'total_price': inventory_response.json()['total_price']})
+        return jsonify({"checkpoint_id": checkpoint_id}), 200
+    except SQLAlchemyError as e:
+        return jsonify({"error": str(e)}), 400
+    finally:
+        session.close()
 
-        if inventory_response.status_code in (400, 500) or payment_response.status_code in (400, 500):
-            order_session.rollback()
 
-            checkpoint_id = inventory_response.json()['checkpoint_id']
-            rollback_response = requests.post(f'{INVENTORY_SERVICE_URL}/reserve_rollback',
-                                              json={'checkpoint_id': checkpoint_id})
+@app.route('/order_rollback', methods=['POST'])
+def order_rollback():
+    session = Session()
+    try:
+        data = request.json
+        checkpoint_id = data['checkpoint_id']
 
-            checkpoint_id2 = payment_response.json()['checkpoint_id']
-            rollback_response2 = requests.post(f'{INVENTORY_SERVICE_URL}/payment_rollback',
-                                              json={'checkpoint_id': checkpoint_id2})
+        # Revert restore point
+        session.execute(text(f"ROLLBACK TO SAVEPOINT checkpoint_{checkpoint_id}"))
+        session.commit()
 
-            return jsonify({"error": "Error during the process. Transaction rolled back."}), 400
+        return jsonify({"error": "Order process rolled back."}), 200
+    except SQLAlchemyError as e:
+        return jsonify({"error": str(e)}), 400
+    finally:
+        session.close()
 
-        order_session.commit()
-        return jsonify({"message": "Order processed successfully!"}), 200
-    except requests.RequestException as e:
+
+@app.route('/order_commit/<int:checkpoint_id>', methods=['POST'])
+def order_commit(checkpoint_id):
+    session = Session()
+    try:
+        order = session.query(Orders).get(checkpoint_id)
+        order.status = 'committed'
+        session.commit()
+        return jsonify({"message": "Order committed"}), 200
+    except Exception as e:
+        session.rollback()
         return jsonify({"error": str(e)}), 500
+    finally:
+        session.close()
 
 
 if __name__ == '__main__':

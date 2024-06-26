@@ -5,8 +5,9 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import SQLAlchemyError
 
+from orchestrator import INVENTORY_SERVICE_URL
 from inventory_service import Inventory
-from order_service import Orders, INVENTORY_SERVICE_URL
+from order_service import Orders
 from payment_service import Payment
 
 app = Flask(__name__)
@@ -23,6 +24,12 @@ class Product(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)
     price = Column(Float, nullable=False)
+
+
+class User(Base):
+    __tablename__ = 'user'
+    id = Column(Integer, primary_key=True)
+    balance = Column(Float, nullable=False)
 
 
 Base.metadata.create_all(engine)
@@ -62,6 +69,15 @@ def get_products():
     try:
         all_products = session.query(Product).all()
         products_list = [{"id": product.id, "name": product.name, "price": product.price} for product in all_products]
+
+        for p in products_list:
+            inventory_response = requests.get(f'{INVENTORY_SERVICE_URL}/get_inventory/{p["id"]}')
+            if inventory_response.status_code == 200:
+                inventory_data = inventory_response.json()
+                p["stock"] = inventory_data.get('stock')
+            else:
+                p["stock"] = None
+
         return jsonify(products_list), 200
     except SQLAlchemyError as e:
         return jsonify({"error": str(e)}), 500
@@ -98,15 +114,17 @@ def update_product(id):
     try:
         data = request.json
         product = session.query(Product).filter_by(id=id).first()
-        inventory = session.query(Inventory).filter_by(product_id=id).first()
+        inventory = requests.get(f'{INVENTORY_SERVICE_URL}/get_inventory/{product.id}')
         if product:
             product.name = data['name'] if 'name' in data else product.name
             product.price = data['price'] if 'price' in data else product.price
             if inventory:
-                inventory.stock = data['stock'] if 'stock' in data else inventory.stock
+                inventory_response = requests.put(f'{INVENTORY_SERVICE_URL}/inventory/{inventory.json()["id"]}', json={'stock': data['stock']})
 
-            session.commit()
-            return jsonify({"message": "Product updated successfully!"}), 200
+                if inventory_response.status_code == 200:
+                    session.commit()
+                    return jsonify({"message": "Product updated successfully!"}), 200
+            return jsonify({"error": "Error updating stock"}), 400
         else:
             return jsonify({"error": "Product not found."}), 404
     except SQLAlchemyError as e:
@@ -163,5 +181,61 @@ def list_all():
         session.close()
 
 
+@app.route('/user', methods=['POST'])
+def add_user():
+    session = Session()
+    try:
+        data = request.json
+        new_user = User(
+            balance=data['balance']
+        )
+        session.add(new_user)
+
+        session.commit()
+        return jsonify({"message": "User added successfully!"}), 201
+    except SQLAlchemyError as e:
+        session.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        session.close()
+
+
+@app.route('/user/<int:id>', methods=['GET'])
+def get_user(id):
+    session = Session()
+    try:
+        user = session.query(User).filter_by(id=id).first()
+        if user:
+            user_data = {"id": user.id, "balance": user.balance}
+
+            return jsonify(user_data), 200
+        else:
+            return jsonify({"error": "User not found."}), 404
+    except SQLAlchemyError as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        session.close()
+
+
+@app.route('/user/<int:id>', methods=['PUT'])
+def update_user(id):
+    session = Session()
+    try:
+        data = request.json
+        user = session.query(User).filter_by(id=id).first()
+        if user:
+            user.balance -= data['total_price']
+            session.commit()
+
+            return jsonify({"message": "New user balance: {}".format(user.balance)}), 200
+        else:
+            return jsonify({"error": "User not found."}), 404
+    except SQLAlchemyError as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        session.close()
+
+
 if __name__ == '__main__':
     app.run(port=5003, debug=True)
+

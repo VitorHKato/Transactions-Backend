@@ -1,9 +1,11 @@
+import requests
 from flask import Flask, request, jsonify
 from sqlalchemy import create_engine, Column, Float, Integer, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
+from orchestrator import PRODUCT_SERVICE_URL
 
 app = Flask(__name__)
 
@@ -32,6 +34,11 @@ def process_payment():
 
     session = Session()
     try:
+        response_user = requests.put(f'{PRODUCT_SERVICE_URL}/user/{user_id}', json={'total_price': amount})
+
+        if response_user.status_code != 200:
+            return jsonify({"error": response_user.json()['error']}), response_user.status_code
+
         new_payment = Payment(
             user_id=user_id,
             amount=amount
@@ -64,6 +71,21 @@ def payment_rollback():
         return jsonify({"error": "Payment process rolled back."}), 200
     except SQLAlchemyError as e:
         return jsonify({"error": str(e)}), 400
+    finally:
+        session.close()
+
+
+@app.route('/payment_commit/<int:checkpoint_id>', methods=['POST'])
+def payment_commit(checkpoint_id):
+    session = Session()
+    try:
+        payment = session.query(Payment).get(checkpoint_id)
+        payment.status = 'committed'
+        session.commit()
+        return jsonify({"message": "Payment committed"}), 200
+    except Exception as e:
+        session.rollback()
+        return jsonify({"error": str(e)}), 500
     finally:
         session.close()
 
