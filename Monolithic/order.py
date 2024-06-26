@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify
 from sqlalchemy.exc import SQLAlchemyError
 
 from inventory import process_inventory
-from payment import process_payment
+from payment import process_payment, process_user_balance
 from models import Product, Inventory, Orders
 from db_conf import Session
 
@@ -41,6 +41,14 @@ def process_order():
             session.flush()         # Temporary persistence
 
             # Process payment
+            user = process_user_balance(user_id, total_price)
+            session.add(user)
+            session.flush()
+
+            if user.balance < 0:
+                session.rollback()
+                return jsonify({"error": "User has no enough balance.", "balance": user.balance}), 400
+
             new_payment = process_payment(user_id, total_price)
             session.add(new_payment)
             session.flush()

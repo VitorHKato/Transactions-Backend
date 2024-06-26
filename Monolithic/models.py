@@ -31,3 +31,10 @@ class Payment(Base):
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, nullable=False)
     amount = Column(Float, nullable=False)
+
+
+class User(Base):
+    __tablename__ = 'user'
+    id = Column(Integer, primary_key=True)
+    balance = Column(Float, nullable=False)
+

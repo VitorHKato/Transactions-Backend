@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 from sqlalchemy.exc import SQLAlchemyError
 
-from models import Product, Orders, Inventory, Payment
+from models import Product, Orders, Inventory, Payment, User
 from db_conf import Session
 
 product_bp = Blueprint('product_bp', __name__)
@@ -132,8 +132,31 @@ def list_all():
         payment_list = [{"id": payment.id, "user_id": payment.user_id, "amount": payment.amount}
                         for payment in payments]
 
+        users = session.query(User).all()
+        user_list = [{"id": user.id, "balance": user.balance}
+                        for user in users]
+
         return jsonify({"products": products_list, "orders": orders_list, "inventory": inventory_list,
-                        "payments": payment_list}), 200
+                        "payments": payment_list, "users": user_list}), 200
+    except SQLAlchemyError as e:
+        session.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        session.close()
+
+
+@product_bp.route('/user', methods=['POST'])
+def add_user():
+    session = Session()
+    try:
+        data = request.json
+        new_user = User(
+            balance=data['balance']
+        )
+        session.add(new_user)
+
+        session.commit()
+        return jsonify({"message": "User added successfully!"}), 201
     except SQLAlchemyError as e:
         session.rollback()
         return jsonify({"error": str(e)}), 500
