@@ -21,6 +21,12 @@
 	}
 - http://127.0.0.1:5000/products/3 (DELETE)
 
+### User
+- http://127.0.0.1:5000/user (POST)
+	- {
+	    "balance": 200.00
+	}
+
 
 ## List all from database
 - http://127.0.0.1:5000/list_all (GET)
