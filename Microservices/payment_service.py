@@ -39,13 +39,16 @@ def process_payment():
         if response_user.status_code != 200:
             return jsonify({"error": response_user.json()['error']}), response_user.status_code
 
+        if response_user.json()['balance'] < 0:
+            return jsonify({"error": "User has no enough balance."}), 500
+
         new_payment = Payment(
             user_id=user_id,
             amount=amount
         )
 
         session.add(new_payment)
-        session.flush()
+        session.commit()
 
         # Created restore point
         checkpoint_id = session.execute(text("SELECT last_insert_rowid()")).scalar()
@@ -79,8 +82,7 @@ def payment_rollback():
 def payment_commit(checkpoint_id):
     session = Session()
     try:
-        payment = session.query(Payment).get(checkpoint_id)
-        payment.status = 'committed'
+        payment = session.query(Payment).get(id=checkpoint_id)
         session.commit()
         return jsonify({"message": "Payment committed"}), 200
     except Exception as e:

@@ -43,14 +43,19 @@ def order():
                                          json={'user_id': user_id,
                                                'total_price': inventory_response.json()['total_price']})
 
-        if payment_response.status_code in (400, 500):
+        if payment_response.status_code == 500:
+            return jsonify({"error": payment_response.json()['error']}), 400
+
+        elif payment_response.status_code == 400:
             raise Exception("Payment creation failed", 'order', payment_response.json()['checkpoint_id'])
 
         checkpoint_ids['payment'] = payment_response.json().get('checkpoint_id')
 
+        print(checkpoint_ids)
+
         # Commit all transactions
         requests.post(f'{ORDER_SERVICE_URL}/order_commit/{checkpoint_ids["order"]}')
-        requests.post(f'{INVENTORY_SERVICE_URL}/reserve_commit/{checkpoint_ids["inventory"]}')
+        requests.post(f'{INVENTORY_SERVICE_URL}/inventory_commit/{checkpoint_ids["inventory"]}')
         requests.post(f'{PAYMENT_SERVICE_URL}/payment_commit/{checkpoint_ids["payment"]}')
 
         return jsonify({"message": "Order processed successfully", "total_price":

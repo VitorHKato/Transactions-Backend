@@ -227,7 +227,7 @@ def update_user(id):
             user.balance -= data['total_price']
             session.commit()
 
-            return jsonify({"message": "New user balance: {}".format(user.balance)}), 200
+            return jsonify({"message": "New user balance: {}".format(user.balance), "balance": user.balance}), 200
         else:
             return jsonify({"error": "User not found."}), 404
     except SQLAlchemyError as e:

@@ -45,7 +45,7 @@ def reserve_inventory():
             total_price = product_response.json()['price'] * quantity
 
         inventory.stock -= quantity
-        session.flush()
+        session.commit()
 
         # Created restore point
         checkpoint_id = session.execute(text("SELECT last_insert_rowid()")).scalar()
@@ -137,8 +137,7 @@ def update_product(id):
 def inventory_commit(checkpoint_id):
     session = Session()
     try:
-        inventory = session.query(Inventory).get(checkpoint_id)
-        inventory.status = 'committed'
+        inventory = session.query(Inventory).get(id=checkpoint_id)
         session.commit()
         return jsonify({"message": "Inventory committed"}), 200
     except Exception as e:

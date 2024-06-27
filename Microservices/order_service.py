@@ -40,7 +40,7 @@ def create_order():
             itens_qtt=quantity
         )
         session.add(new_order)
-        session.flush()
+        session.commit()
 
         # Created restore point
         checkpoint_id = session.execute(text("SELECT last_insert_rowid()")).scalar()
@@ -74,8 +74,7 @@ def order_rollback():
 def order_commit(checkpoint_id):
     session = Session()
     try:
-        order = session.query(Orders).get(checkpoint_id)
-        order.status = 'committed'
+        order = session.query(Orders).get(id=checkpoint_id)
         session.commit()
         return jsonify({"message": "Order committed"}), 200
     except Exception as e:
