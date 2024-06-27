@@ -48,7 +48,7 @@ def process_payment():
         )
 
         session.add(new_payment)
-        session.commit()
+        session.commit status()
 
         # Created restore point
         checkpoint_id = session.execute(text("SELECT last_insert_rowid()")).scalar()
